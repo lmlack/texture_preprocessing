@@ -1,0 +1,1 @@
+The majority of this was written by Andrew G. Klein at Western Washington University. Some edits were made for compatibilities with Google Colab and different datasets. CLAHE processing was also added for enhanced improvement of the ML models. 
