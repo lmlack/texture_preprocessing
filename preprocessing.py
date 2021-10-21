@@ -99,6 +99,28 @@ def make_dataset(input_dir, output_dir, SCALE, TILESIZE, augmentedtiles=0, valid
 
 x_train=x_train[:,:,:,np.newaxis] # add dimension
 x_test=x_test[:,:,:,np.newaxis]
+x_valid=x_valid[:,:,:,np.newaxis]
+
+# Testing image dataset to see what modications should be made to the clipping parameter of the CLAHE algorithm that is best suited to the dataset
+# Select any image from dataset
+clahe_test_idx = 100
+img = x_train[clahe_test_idx]
+img = np.squeeze(255*img).astype(np.uint8)
+
+cv2_imshow(img)
+
+num_imgs_show = 30
+plt.figure(figsize=(2*num_imgs_show, 15))
+for i in range(num_imgs_show):
+    clip = 1+i
+    plt.subplot(3, num_imgs_show/3, 1 + i)
+    clahe = cv2.createCLAHE(clipLimit = clip)
+    eqd_img = clahe.apply(img)
+    plt.imshow(np.reshape(eqd_img, (64, 64)), cmap='binary')
+    plt.xticks([])
+    plt.yticks([])
+plt.show()
+
 
 # Processes all images with CLAHE
 def equalize(x):
@@ -115,3 +137,49 @@ def equalize(x):
 
 equalize(x_train)
 equalize(x_test)
+
+# Depending on the dataset, some of the tiles may be half-rendered or have large amounts of white or black space
+# This will identify poorly-rendered tiles and replace them with a fully-rendered tile from the same image
+# Note: The replacement functionality may not be good for every ML algorithm but should work well with the ones 
+# utilizing triplet loss
+def contrast(x):
+  return np.max(x) - np.min(x)
+
+def img_is_valid(img):
+    min_threshold = 0.05
+    max_threshold = 0.2
+    if np.all(img[-1] == img[-1][0]):
+        return False
+    if np.all(img[:,-1] == img[:,-1][0]):
+        return False
+    c_col_first = contrast(img[:,0])
+    c_col_last = contrast(img[:,-1])
+    c_row_first = contrast(img[0])
+    c_row_last = contrast(img[-1])
+    if c_row_first > max_threshold and c_row_last < min_threshold:
+        return False
+    if c_col_first >  max_threshold and c_col_last < min_threshold:
+        return False
+    # Probably valid at this point, but can do additional checks later
+    return True
+
+num_tiles_img = 16
+def replace_invalid_tiles(x):
+  num_imgs = len(x)//num_tiles_img
+  for img_id in range(num_imgs):
+    good_idxs = []
+    bad_idxs = []
+    for tile_num in range(num_tiles_img):
+      tile_idx = num_tiles_img*img_id + tile_num
+      if not img_is_valid(x[tile_idx]):
+        bad_idxs.append(tile_idx)
+      else:
+        good_idxs.append(tile_idx)
+
+    for bad_idx in bad_idxs:
+      good_idx = random.choice(good_idxs)
+      x[bad_idx] = x[good_idx]
+
+replace_invalid_tiles(x_train)
+replace_invalid_tiles(x_test)
+replace_invalid_tiles(x_valid)
